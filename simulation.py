@@ -1,3 +1,4 @@
+#### /Users/zeynel/Projects/Scythe/simulation.py ####
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 
@@ -16,6 +17,9 @@ from mesa.space import MultiGrid
 
 # Import für den Plan-Optimierer (ggf. Pfad anpassen)
 from plan_optimizer.plan_optim import optimize_plan
+
+# [NEU] import MemoryManager
+from scythe.integration.hyper_memory_manager import SdmMemoryManager
 
 # =============================================================================
 # Konfiguration-Hilfsklasse: harte Konstanten/Parameter hier anpassbar
@@ -51,7 +55,6 @@ def find_equilibrium_price(
     Sucht iterativ (Bisection) den Gleichgewichtspreis mit Kombination 
     aus absoluter und optional relativer Toleranz.
     """
-
     if dynamic_bounds:
         # Minimal- und Maximal-Preis ableiten (Beispiel)
         test_prices = [1.0, 10.0, 100.0]
@@ -444,11 +447,6 @@ class PlannerAgent(Agent):
     def step_asynchronous(self, stage):
         self.step(stage)
 
-    # (Weitere Methoden hier belassen, nur wenig geändert)
-    # ...
-    # Für Kürze der Darstellung lassen wir detail code unverändert;
-    # du kannst die alten plan-Methoden übernehmen.
-
     def step(self, stage):
         # Nur wenn alpha == 1 => "planning" ...
         if stage == "planning" and self.model.alpha == 1:
@@ -475,7 +473,6 @@ class PlannerAgent(Agent):
         # ...
         pass
 
-    # etc. wie im Originalcode
 
 # =============================================================================
 # ProducerAgent
@@ -931,6 +928,14 @@ class EconomicModel(Model):
             }
         )
 
+        # [NEU] Erzeuge unser SdmMemoryManager
+        self.hyper_memory = SdmMemoryManager(
+            address_size=64,
+            memory_size=500,
+            activation_percent=0.1,
+            init_mode="random"
+        )
+
     def log_data(self, msg):
         logger.info(f"Tick {self.schedule.steps}: {msg}")
 
@@ -1081,3 +1086,20 @@ class EconomicModel(Model):
             self.direct_allocation()
         self.redistribute_taxes_to_poorest(fraction=0.3)
         self.datacollector.collect(self)
+
+        # [NEU] Nach jedem Step einen State abspeichern
+        state_vec = self._create_global_state_vector()
+        self.hyper_memory.store_state(state_vec)
+
+    def _create_global_state_vector(self):
+        """
+        Beispielhafte State-Kodierung als reeller Vektor:
+         - total tax_revenue
+         - sum of producer cash
+         - sum of consumer budgets
+        (Du kannst beliebig andere Dimensionen definieren)
+        """
+        sum_producer_cash = sum(p.cash for p in self.producers)
+        sum_consumer_budg = sum(c.budget for c in self.consumers)
+        return np.array([self.tax_revenue, sum_producer_cash, sum_consumer_budg], dtype=float)
+
